@@ -220,5 +220,35 @@ namespace DotNetCore.CAP.Sqlite
 
             return await Task.FromResult(result);
         }
+
+        public Task ChangePublishStateToDelayedAsync(string[] ids)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task ChangePublishStateAsync(MediumMessage message, StatusName state, object transaction = null)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<MediumMessage> StoreMessageAsync(string name, Message content, object transaction = null)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task StoreReceivedExceptionMessageAsync(string name, string group, string content)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<MediumMessage> StoreReceivedMessageAsync(string name, string group, Message content)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task ScheduleMessagesOfDelayedAsync(Func<object, IEnumerable<MediumMessage>, Task> scheduleTask, CancellationToken token = default)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

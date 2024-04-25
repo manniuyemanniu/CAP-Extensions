@@ -2,7 +2,7 @@
   
   <Import Project="..\..\build\common.props" />
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+	  <TargetFramework>net7.0</TargetFramework>
     <AssemblyName>DotNetCore.CAP.Oracle</AssemblyName>
     <PackageId>Cocosip.CAP.Oracle</PackageId>
     <Description>Distributed transaction solution in micro-service base on eventually consistency, also an eventbus with Outbox pattern.</Description>
@@ -14,10 +14,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="DotNetCore.CAP" Version="3.1.2" />
+    <PackageReference Include="DotNetCore.CAP" Version="7.0.3" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="3.1.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="3.1.9" />
-    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="2.19.100" />
+    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="3.21.140" />
   </ItemGroup>
 
   <ItemGroup>

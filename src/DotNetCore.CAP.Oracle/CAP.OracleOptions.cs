@@ -4,6 +4,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Oracle.ManagedDataAccess.Client;
 
 // ReSharper disable once CheckNamespace
 namespace DotNetCore.CAP
@@ -14,6 +15,18 @@ namespace DotNetCore.CAP
         /// Gets or sets the database's connection string that will be used to store database entities.
         /// </summary>
         public string ConnectionString { get; set; }
+        //public OracleDataSource? DataSource { get; set; }
+
+        /// <summary>
+        /// Creates an Npgsql connection from the configured data source.
+        /// </summary>
+        internal OracleConnection CreateConnection()
+        {
+#pragma warning disable CS0618 // Type or member is obsolete
+            //return DataSource != null ? DataSource.CreateConnection() : new OracleConnection(ConnectionString);
+            return new OracleConnection(ConnectionString);
+#pragma warning restore CS0618 // Type or member is obsolete
+        }
     }
 
     internal class ConfigureOracleOptions : IConfigureOptions<OracleOptions>

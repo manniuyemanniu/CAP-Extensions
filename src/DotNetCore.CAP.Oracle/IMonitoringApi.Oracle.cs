@@ -103,7 +103,7 @@ namespace DotNetCore.CAP.Oracle
                     var index = 1;
                     messages.Add(new MessageDto
                     {
-                        Id = reader.GetInt64(index++),
+                        Id = reader.GetInt64(index++).ToString(),
                         Version = reader.GetString(index++),
                         Name = reader.GetString(index++),
                         Group = queryDto.MessageType == MessageType.Subscribe ? reader.GetString(index++) : default,
@@ -247,6 +247,46 @@ namespace DotNetCore.CAP.Oracle
             });
 
             return await Task.FromResult(mediumMessage);
+        }
+
+        public Task<StatisticsDto> GetStatisticsAsync()
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<PagedQueryResult<MessageDto>> GetMessagesAsync(MessageQueryDto queryDto)
+        {
+            throw new NotImplementedException();
+        }
+
+        ValueTask<int> IMonitoringApi.PublishedFailedCount()
+        {
+            throw new NotImplementedException();
+        }
+
+        ValueTask<int> IMonitoringApi.PublishedSucceededCount()
+        {
+            throw new NotImplementedException();
+        }
+
+        ValueTask<int> IMonitoringApi.ReceivedFailedCount()
+        {
+            throw new NotImplementedException();
+        }
+
+        ValueTask<int> IMonitoringApi.ReceivedSucceededCount()
+        {
+            throw new NotImplementedException();
+        }
+
+        Task<IDictionary<DateTime, int>> IMonitoringApi.HourlySucceededJobs(MessageType type)
+        {
+            throw new NotImplementedException();
+        }
+
+        Task<IDictionary<DateTime, int>> IMonitoringApi.HourlyFailedJobs(MessageType type)
+        {
+            throw new NotImplementedException();
         }
     }
 }
