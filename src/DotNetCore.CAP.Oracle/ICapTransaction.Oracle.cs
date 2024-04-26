@@ -2,10 +2,13 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using DotNetCore.CAP.Transport;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using System;
 using System.Data;
+using System.Data.Common;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,11 +45,11 @@ namespace DotNetCore.CAP
 
             switch (DbTransaction)
             {
-                case IDbTransaction dbTransaction:
-                    dbTransaction.Commit();
+                case DbTransaction dbTransaction:
+                    await dbTransaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case IDbContextTransaction dbContextTransaction:
-                    await dbContextTransaction.CommitAsync(cancellationToken);
+                    await dbContextTransaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                     break;
             }
 
@@ -74,11 +77,11 @@ namespace DotNetCore.CAP
 
             switch (DbTransaction)
             {
-                case IDbTransaction dbTransaction:
-                    dbTransaction.Rollback();
+                case DbTransaction dbTransaction:
+                    await dbTransaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case IDbContextTransaction dbContextTransaction:
-                    await dbContextTransaction.RollbackAsync(cancellationToken);
+                    await dbContextTransaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
                     break;
             }
         }
@@ -87,6 +90,7 @@ namespace DotNetCore.CAP
         {
             (DbTransaction as IDbTransaction)?.Dispose();
             DbTransaction = null;
+            GC.SuppressFinalize(this);
         }
     }
 
@@ -124,9 +128,9 @@ namespace DotNetCore.CAP
             {
                 dbConnection.Open();
             }
- 
+
             var dbTransaction = dbConnection.BeginTransaction();
-            publisher.Transaction.Value = publisher.ServiceProvider.GetService<ICapTransaction>();
+            publisher.Transaction.Value = ActivatorUtilities.CreateInstance<OracleCapTransaction>(publisher.ServiceProvider);
             return publisher.Transaction.Value.Begin(dbTransaction, autoCommit);
         }
 
@@ -141,9 +145,41 @@ namespace DotNetCore.CAP
             ICapPublisher publisher, bool autoCommit = false)
         {
             var trans = database.BeginTransaction();
-            publisher.Transaction.Value = publisher.ServiceProvider.GetService<ICapTransaction>();
+            publisher.Transaction.Value = ActivatorUtilities.CreateInstance<OracleCapTransaction>(publisher.ServiceProvider);
             var capTrans = publisher.Transaction.Value.Begin(trans, autoCommit);
             return new CapEFDbTransaction(capTrans);
+        }
+
+        /// <summary>
+        /// Start the CAP transaction async
+        /// </summary>
+        /// <param name="database">The <see cref="DatabaseFacade" />.</param>
+        /// <param name="publisher">The <see cref="ICapPublisher" />.</param>
+        /// <param name="autoCommit">Whether the transaction is automatically committed when the message is published</param>
+        /// <param name="cancellationToken"></param>
+        /// <returns>The <see cref="IDbContextTransaction" /> of EF DbContext transaction object.</returns>
+        public static Task<IDbContextTransaction> BeginTransactionAsync(this DatabaseFacade database,
+            ICapPublisher publisher, bool autoCommit = false, CancellationToken cancellationToken = default)
+        {
+            return BeginTransactionAsync(database, IsolationLevel.Unspecified, publisher, autoCommit, cancellationToken);
+        }
+
+        /// <summary>
+        /// Start the CAP transaction async
+        /// </summary>
+        /// <param name="database">The <see cref="DatabaseFacade" />.</param>
+        /// <param name="publisher">The <see cref="ICapPublisher" />.</param>
+        /// <param name="isolationLevel">The <see cref="IsolationLevel" /> to use</param>
+        /// <param name="autoCommit">Whether the transaction is automatically committed when the message is published</param>
+        /// <param name="cancellationToken"></param>
+        /// <returns>The <see cref="IDbContextTransaction" /> of EF DbContext transaction object.</returns>
+        public static Task<IDbContextTransaction> BeginTransactionAsync(this DatabaseFacade database,
+            IsolationLevel isolationLevel, ICapPublisher publisher, bool autoCommit = false, CancellationToken cancellationToken = default)
+        {
+            var trans = database.BeginTransactionAsync(isolationLevel, cancellationToken).GetAwaiter().GetResult();
+            publisher.Transaction.Value = ActivatorUtilities.CreateInstance<OracleCapTransaction>(publisher.ServiceProvider);
+            var capTrans = publisher.Transaction.Value.Begin(trans, autoCommit);
+            return Task.FromResult<IDbContextTransaction>(new CapEFDbTransaction(capTrans));
         }
     }
 }

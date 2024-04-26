@@ -17,7 +17,7 @@ namespace Microsoft.Extensions.DependencyInjection
 
         public static CapOptions UseOracle(this CapOptions options, Action<OracleOptions> configure)
         {
-            if (configure == null) throw new ArgumentNullException(nameof(configure));
+          if (configure == null) throw new ArgumentNullException(nameof(configure));
 
             configure += x => x.Version = options.Version;
 

@@ -3,13 +3,14 @@
 
 using DotNetCore.CAP;
 using System;
+using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
 
 // ReSharper disable once CheckNamespace
 namespace Microsoft.EntityFrameworkCore.Storage
 {
-    internal class CapEFDbTransaction : IDbContextTransaction
+    public class CapEFDbTransaction : IDbContextTransaction
     {
         private readonly ICapTransaction _transaction;
 
@@ -50,6 +51,16 @@ namespace Microsoft.EntityFrameworkCore.Storage
         public ValueTask DisposeAsync()
         {
             return new ValueTask(Task.Run(() => _transaction.Dispose()));
+        }
+
+
+        public DbTransaction Instance
+        {
+            get
+            {
+                var dbContextTransaction = (IDbContextTransaction)_transaction.DbTransaction!;
+                return dbContextTransaction.GetDbTransaction();
+            }
         }
     }
 }

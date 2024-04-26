@@ -28,12 +28,12 @@ namespace DotNetCore.CAP.Oracle
 
         public virtual string GetPublishedTableName()
         {
-            return $@"""{_options.Value.Schema}"".""{PUBLISHED_TABLE}""";
+            return $@"""{_options.Value.Schema.ToUpper()}"".""{PUBLISHED_TABLE}""";
         }
 
         public virtual string GetReceivedTableName()
         {
-            return $@"""{_options.Value.Schema}"".""{RECEIVED_TABLE}""";
+            return $@"""{_options.Value.Schema.ToUpper()}"".""{RECEIVED_TABLE}""";
         }
 
         public async Task InitializeAsync(CancellationToken cancellationToken)
@@ -55,8 +55,8 @@ namespace DotNetCore.CAP.Oracle
             var batchSql = $"DECLARE " +
                 $"num1 NUMBER; num2 NUMBER;" +
                 $"BEGIN " +
-                $"SELECT COUNT(*) INTO num1 FROM all_tables WHERE \"OWNER\" = '{_options.Value.Schema}' AND \"TABLE_NAME\"='{RECEIVED_TABLE}';" +
-                $"SELECT COUNT(*) INTO num2 FROM all_tables WHERE \"OWNER\" = '{_options.Value.Schema}' AND \"TABLE_NAME\" = '{PUBLISHED_TABLE}';" +
+                $"SELECT COUNT(*) INTO num1 FROM all_tables WHERE \"OWNER\" = UPPER('{_options.Value.Schema}') AND \"TABLE_NAME\"=UPPER('{RECEIVED_TABLE}');" +
+                $"SELECT COUNT(*) INTO num2 FROM all_tables WHERE \"OWNER\" = UPPER('{_options.Value.Schema}') AND \"TABLE_NAME\" = UPPER('{PUBLISHED_TABLE}');" +
                 $"IF num1<1 THEN " +
                 $"EXECUTE IMMEDIATE 'CREATE TABLE {GetReceivedTableName()}(" +
                 $"\"Id\" NUMBER PRIMARY KEY NOT NULL," +

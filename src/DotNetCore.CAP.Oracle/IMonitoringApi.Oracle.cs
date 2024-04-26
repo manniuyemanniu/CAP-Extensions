@@ -5,6 +5,7 @@ using DotNetCore.CAP.Internal;
 using DotNetCore.CAP.Messages;
 using DotNetCore.CAP.Monitoring;
 using DotNetCore.CAP.Persistence;
+using DotNetCore.CAP.Serialization;
 using Microsoft.Extensions.Options;
 using Oracle.ManagedDataAccess.Client;
 using System;
@@ -19,88 +20,108 @@ namespace DotNetCore.CAP.Oracle
         private readonly OracleOptions _options;
         private readonly string _pubName;
         private readonly string _recName;
+        private readonly ISerializer _serializer;
 
-        public OracleMonitoringApi(IOptions<OracleOptions> options, IStorageInitializer initializer)
+        public OracleMonitoringApi(IOptions<OracleOptions> options, IStorageInitializer initializer, ISerializer serializer)
         {
             _options = options.Value ?? throw new ArgumentNullException(nameof(options));
             _pubName = initializer.GetPublishedTableName();
             _recName = initializer.GetReceivedTableName();
+            _serializer = serializer;
         }
 
-        public async Task<MediumMessage> GetPublishedMessageAsync(long id) => await GetMessageAsync(_pubName, id);
-
-        public async Task<MediumMessage> GetReceivedMessageAsync(long id) => await GetMessageAsync(_recName, id);
-
-        public StatisticsDto GetStatistics()
+        public async Task<MediumMessage> GetPublishedMessageAsync(long id)
         {
-            var sql = $"WITH " +
-                $"C1 AS( SELECT COUNT(\"Id\") AS PublishedSucceeded FROM {_pubName} WHERE \"StatusName\" = N'Succeeded')," +
-                $"C2 AS(SELECT COUNT(\"Id\") AS ReceivedSucceeded FROM {_recName} WHERE \"StatusName\" = N'Succeeded')," +
-                $"C3 AS(SELECT COUNT(\"Id\") AS PublishedFailed FROM {_pubName} WHERE \"StatusName\" = N'Failed')," +
-                $"C4 AS(SELECT COUNT(\"Id\") AS ReceivedFailed FROM {_recName} WHERE \"StatusName\" = N'Failed') " +
-                $"SELECT * FROM C1,C2,C3,C4";
-            StatisticsDto statistics;
-            using (var connection = new OracleConnection(_options.ConnectionString))
+            return await GetMessageAsync(_pubName, id).ConfigureAwait(false);
+        }
+
+        public async Task<MediumMessage?> GetReceivedMessageAsync(long id)
+        {
+            return await GetMessageAsync(_recName, id).ConfigureAwait(false);
+        }
+        public async Task<StatisticsDto> GetStatisticsAsync()
+        {
+            var sql = $@"
+SELECT
+(
+    SELECT COUNT(""Id"") FROM {_pubName} WHERE ""StatusName"" = N'Succeeded'
+) AS ""PublishedSucceeded"",
+(
+    SELECT COUNT(""Id"") FROM {_recName} WHERE ""StatusName"" = N'Succeeded'
+) AS ""ReceivedSucceeded"",
+(
+    SELECT COUNT(""Id"") FROM {_pubName} WHERE ""StatusName"" = N'Failed'
+) AS ""PublishedFailed"",
+(
+    SELECT COUNT(""Id"") FROM {_recName} WHERE ""StatusName"" = N'Failed'
+) AS ""ReceivedFailed"",
+(
+    SELECT COUNT(""Id"") FROM {_pubName} WHERE ""StatusName"" = N'Delayed'
+) AS ""PublishedDelayed"";";
+
+            var connection = new OracleConnection(_options.ConnectionString);
+            await using var _ = connection.ConfigureAwait(false);
+            var statistics = await connection.ExecuteReaderAsync(sql, async reader =>
             {
-                statistics = connection.ExecuteReader(sql, reader =>
+                var statisticsDto = new StatisticsDto();
+
+                while (await reader.ReadAsync().ConfigureAwait(false))
                 {
-                    var statisticsDto = new StatisticsDto();
+                    statisticsDto.PublishedSucceeded = reader.GetInt32(0);
+                    statisticsDto.ReceivedSucceeded = reader.GetInt32(1);
+                    statisticsDto.PublishedFailed = reader.GetInt32(2);
+                    statisticsDto.ReceivedFailed = reader.GetInt32(3);
+                    statisticsDto.PublishedDelayed = reader.GetInt32(4);
+                }
 
-                    while (reader.Read())
-                    {
-                        statisticsDto.PublishedSucceeded = reader.GetInt32(0);
-                        statisticsDto.ReceivedSucceeded = reader.GetInt32(1);
-                        statisticsDto.PublishedFailed = reader.GetInt32(2);
-                        statisticsDto.ReceivedFailed = reader.GetInt32(3);
-                    }
-
-                    return statisticsDto;
-                });
-            }
+                return statisticsDto;
+            }).ConfigureAwait(false);
 
             return statistics;
         }
 
-        public IList<MessageDto> Messages(MessageQueryDto queryDto)
+        public async Task<PagedQueryResult<MessageDto>> GetMessagesAsync(MessageQueryDto queryDto)
         {
             var tableName = queryDto.MessageType == MessageType.Publish ? _pubName : _recName;
             var where = string.Empty;
 
-            var sqlParams = new List<object>();
+            if (!string.IsNullOrEmpty(queryDto.StatusName)) where += " and Lower(\"StatusName\") = Lower(:StatusName)";
 
-            if (!string.IsNullOrEmpty(queryDto.StatusName))
-            {
-                where += " AND LOWER(\"StatusName\") = LOWER(:StatusName)";
-                sqlParams.Add(new OracleParameter(":StatusName", queryDto.StatusName ?? string.Empty));
-            }
-            if (!string.IsNullOrEmpty(queryDto.Name))
-            {
-                where += " AND LOWER(\"Name\") = LOWER(:Name)";
-                sqlParams.Add(new OracleParameter(":Name", queryDto.Name ?? string.Empty));
-            }
-            if (!string.IsNullOrEmpty(queryDto.Group))
-            {
-                where += " AND LOWER(\"Group\") = LOWER(:Group1)";
-                sqlParams.Add(new OracleParameter(":Group1", queryDto.Group ?? string.Empty));
-            }
-            if (!string.IsNullOrEmpty(queryDto.Content))
-            {
-                where += " AND \"Content\" Like CONCAT('%',:Content,'%')";
-                sqlParams.Add(new OracleParameter(":Content", $"%{queryDto.Content}%"));
-            }
-            sqlParams.Add(new OracleParameter(":Offset", queryDto.CurrentPage * queryDto.PageSize));
-            sqlParams.Add(new OracleParameter(":OffsetEnd", queryDto.CurrentPage * queryDto.PageSize + queryDto.PageSize));
-            var sqlQuery = $"SELECT * FROM (SELECT ROWNUM AS rowno,t.* FROM {tableName} t WHERE \"Id\">0 {where} ORDER BY \"Added\" DESC) alias WHERE alias.rowno BETWEEN :Offset AND :OffsetEnd";
+            if (!string.IsNullOrEmpty(queryDto.Name)) where += " and Lower(\"Name\") = Lower(:Name)";
 
+            if (!string.IsNullOrEmpty(queryDto.Group)) where += " and Lower(\"Group\") = Lower(:Group)";
 
-            using var connection = new OracleConnection(_options.ConnectionString);
-            return connection.ExecuteReader(sqlQuery, reader =>
+            if (!string.IsNullOrEmpty(queryDto.Content)) where += " and \"Content\" ILike :Content";
+
+            var sqlQuery =
+                $"select * from {tableName} where 1=1 {where} order by \"Added\" desc offset :Offset limit :Limit";
+
+            var connection = new OracleConnection(_options.ConnectionString);
+            await using var _ = connection.ConfigureAwait(false);
+
+            var count = await connection.ExecuteScalarAsync<int>($"select count(1) from {tableName} where 1=1 {where}",
+                new OracleParameter(":StatusName", queryDto.StatusName ?? string.Empty),
+                new OracleParameter(":Group", queryDto.Group ?? string.Empty),
+                new OracleParameter(":Name", queryDto.Name ?? string.Empty),
+                new OracleParameter(":Content", $"%{queryDto.Content}%")).ConfigureAwait(false);
+
+            object[] sqlParams =
+            {
+            new OracleParameter(":StatusName", queryDto.StatusName ?? string.Empty),
+            new OracleParameter(":Group", queryDto.Group ?? string.Empty),
+            new OracleParameter(":Name", queryDto.Name ?? string.Empty),
+            new OracleParameter(":Content", $"%{queryDto.Content}%"),
+            new OracleParameter(":Offset", queryDto.CurrentPage * queryDto.PageSize),
+            new OracleParameter(":Limit", queryDto.PageSize)
+        };
+
+            var items = await connection.ExecuteReaderAsync(sqlQuery, async reader =>
             {
                 var messages = new List<MessageDto>();
 
-                while (reader.Read())
+                while (await reader.ReadAsync().ConfigureAwait(false))
                 {
-                    var index = 1;
+                    var index = 0;
                     messages.Add(new MessageDto
                     {
                         Id = reader.GetInt64(index++).ToString(),
@@ -110,57 +131,61 @@ namespace DotNetCore.CAP.Oracle
                         Content = reader.GetString(index++),
                         Retries = reader.GetInt32(index++),
                         Added = reader.GetDateTime(index++),
-                        ExpiresAt = reader.GetDateTime(index++),
+                        ExpiresAt = reader.IsDBNull(index++) ? null : reader.GetDateTime(index - 1),
                         StatusName = reader.GetString(index)
                     });
                 }
 
                 return messages;
-            }, sqlParams.ToArray());
+            }, sqlParams: sqlParams).ConfigureAwait(false);
+
+            return new PagedQueryResult<MessageDto>
+            { Items = items, PageIndex = queryDto.CurrentPage, PageSize = queryDto.PageSize, Totals = count };
         }
 
-        public int PublishedFailedCount()
+        public ValueTask<int> PublishedFailedCount()
         {
             return GetNumberOfMessage(_pubName, nameof(StatusName.Failed));
         }
 
-        public int PublishedSucceededCount()
+        public ValueTask<int> PublishedSucceededCount()
         {
             return GetNumberOfMessage(_pubName, nameof(StatusName.Succeeded));
         }
 
-        public int ReceivedFailedCount()
+        public ValueTask<int> ReceivedFailedCount()
         {
             return GetNumberOfMessage(_recName, nameof(StatusName.Failed));
         }
 
-        public int ReceivedSucceededCount()
+        public ValueTask<int> ReceivedSucceededCount()
         {
             return GetNumberOfMessage(_recName, nameof(StatusName.Succeeded));
         }
 
-        public IDictionary<DateTime, int> HourlySucceededJobs(MessageType type)
+        public async Task<IDictionary<DateTime, int>> HourlySucceededJobs(MessageType type)
         {
             var tableName = type == MessageType.Publish ? _pubName : _recName;
-            return GetHourlyTimelineStats(tableName, nameof(StatusName.Succeeded));
+            return await GetHourlyTimelineStats(tableName, nameof(StatusName.Succeeded)).ConfigureAwait(false);
         }
 
-        public IDictionary<DateTime, int> HourlyFailedJobs(MessageType type)
+        public async Task<IDictionary<DateTime, int>> HourlyFailedJobs(MessageType type)
         {
             var tableName = type == MessageType.Publish ? _pubName : _recName;
-            return GetHourlyTimelineStats(tableName, nameof(StatusName.Failed));
+            return await GetHourlyTimelineStats(tableName, nameof(StatusName.Failed)).ConfigureAwait(false);
         }
 
-        private int GetNumberOfMessage(string tableName, string statusName)
+        private async ValueTask<int> GetNumberOfMessage(string tableName, string statusName)
         {
             var sqlQuery = $"SELECT COUNT(\"Id\") FROM {tableName} WHERE LOWER(\"StatusName\") = LOWER(:state)";
 
-            using var connection = new OracleConnection(_options.ConnectionString);
-            var count = connection.ExecuteScalar<int>(sqlQuery, new OracleParameter(":state", statusName));
-            return count;
+            var connection = new OracleConnection(_options.ConnectionString);
+            await using var _ = connection.ConfigureAwait(false);
+            return await connection.ExecuteScalarAsync<int>(sqlQuery, new OracleParameter(":state", statusName))
+                .ConfigureAwait(false);
         }
 
-        private Dictionary<DateTime, int> GetHourlyTimelineStats(string tableName, string statusName)
+        private Task<Dictionary<DateTime, int>> GetHourlyTimelineStats(string tableName, string statusName)
         {
             var endDate = DateTime.Now;
             var dates = new List<DateTime>();
@@ -175,35 +200,44 @@ namespace DotNetCore.CAP.Oracle
             return GetTimelineStats(tableName, statusName, keyMaps);
         }
 
-        private Dictionary<DateTime, int> GetTimelineStats(
+        private async Task<Dictionary<DateTime, int>> GetTimelineStats(
             string tableName,
             string statusName,
             IDictionary<string, DateTime> keyMaps)
         {
-            var sqlQuery = $"WITH aggr AS ( SELECT TO_CHAR(\"Added\",'yyyy-MM-dd-HH') AS \"Key\",COUNT(\"Id\") AS \"Count\" FROM {tableName} WHERE LOWER(\"StatusName\") = LOWER(:statusName) GROUP BY TO_CHAR(\"Added\", 'yyyy-MM-dd-HH') )" +
-                $" SELECT \"Key\",\"Count\" FROM aggr WHERE \"Key\" >= :minKey and \"Key\" <= :maxKey";
+            var sqlQuery =
+                $@"
+with aggr as (
+    select to_char(""Added"",'yyyy-MM-dd-HH') as ""Key"",
+    count(""Id"") as ""Count""
+    from {tableName}
+        where ""StatusName"" = :statusName
+    group by to_char(""Added"", 'yyyy-MM-dd-HH')
+)
+select ""Key"",""Count"" from aggr where ""Key"" >= :minKey and ""Key"" <= :maxKey;";
 
             object[] sqlParams =
             {
-                new OracleParameter(":statusName", statusName),
-                new OracleParameter(":minKey", keyMaps.Keys.Min()),
-                new OracleParameter(":maxKey", keyMaps.Keys.Max())
-            };
+            new OracleParameter(":statusName", statusName),
+            new OracleParameter(":minKey", keyMaps.Keys.Min()),
+            new OracleParameter(":maxKey", keyMaps.Keys.Max())
+        };
 
             Dictionary<string, int> valuesMap;
-            using (var connection = new OracleConnection(_options.ConnectionString))
+            var connection = new OracleConnection(_options.ConnectionString);
+            await using (connection.ConfigureAwait(false))
             {
-                valuesMap = connection.ExecuteReader(sqlQuery, reader =>
+                valuesMap = await connection.ExecuteReaderAsync(sqlQuery, async reader =>
                 {
                     var dictionary = new Dictionary<string, int>();
 
-                    while (reader.Read())
+                    while (await reader.ReadAsync().ConfigureAwait(false))
                     {
                         dictionary.Add(reader.GetString(0), reader.GetInt32(1));
                     }
 
                     return dictionary;
-                }, sqlParams);
+                }, sqlParams: sqlParams).ConfigureAwait(false);
             }
 
             foreach (var key in keyMaps.Keys)
@@ -222,20 +256,23 @@ namespace DotNetCore.CAP.Oracle
             return result;
         }
 
-        private async Task<MediumMessage> GetMessageAsync(string tableName, long id)
+        private async Task<MediumMessage?> GetMessageAsync(string tableName, long id)
         {
-            var sql = $"SELECT \"Id\" AS \"DbId\", \"Content\", \"Added\", \"ExpiresAt\", \"Retries\" FROM {tableName} WHERE \"Id\"={id}";
+            var sql =
+                $@"SELECT ""Id"" AS ""DbId"", ""Content"", ""Added"", ""ExpiresAt"", ""Retries"" FROM {tableName} WHERE ""Id""={id} FOR UPDATE SKIP LOCKED";
 
-            using var connection = new OracleConnection(_options.ConnectionString);
-            var mediumMessage = connection.ExecuteReader(sql, reader =>
+            var connection = new OracleConnection(_options.ConnectionString);
+            await using var _ = connection.ConfigureAwait(false);
+            var mediumMessage = await connection.ExecuteReaderAsync(sql, async reader =>
             {
-                MediumMessage message = null;
+                MediumMessage? message = null;
 
-                while (reader.Read())
+                while (await reader.ReadAsync().ConfigureAwait(false))
                 {
                     message = new MediumMessage
                     {
                         DbId = reader.GetInt64(0).ToString(),
+                        Origin = _serializer.Deserialize(reader.GetString(1))!,
                         Content = reader.GetString(1),
                         Added = reader.GetDateTime(2),
                         ExpiresAt = reader.GetDateTime(3),
@@ -244,49 +281,9 @@ namespace DotNetCore.CAP.Oracle
                 }
 
                 return message;
-            });
+            }).ConfigureAwait(false);
 
-            return await Task.FromResult(mediumMessage);
-        }
-
-        public Task<StatisticsDto> GetStatisticsAsync()
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<PagedQueryResult<MessageDto>> GetMessagesAsync(MessageQueryDto queryDto)
-        {
-            throw new NotImplementedException();
-        }
-
-        ValueTask<int> IMonitoringApi.PublishedFailedCount()
-        {
-            throw new NotImplementedException();
-        }
-
-        ValueTask<int> IMonitoringApi.PublishedSucceededCount()
-        {
-            throw new NotImplementedException();
-        }
-
-        ValueTask<int> IMonitoringApi.ReceivedFailedCount()
-        {
-            throw new NotImplementedException();
-        }
-
-        ValueTask<int> IMonitoringApi.ReceivedSucceededCount()
-        {
-            throw new NotImplementedException();
-        }
-
-        Task<IDictionary<DateTime, int>> IMonitoringApi.HourlySucceededJobs(MessageType type)
-        {
-            throw new NotImplementedException();
-        }
-
-        Task<IDictionary<DateTime, int>> IMonitoringApi.HourlyFailedJobs(MessageType type)
-        {
-            throw new NotImplementedException();
+            return mediumMessage;
         }
     }
 }

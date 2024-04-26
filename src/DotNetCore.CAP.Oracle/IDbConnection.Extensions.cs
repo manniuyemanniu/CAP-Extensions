@@ -1,6 +1,7 @@
 ﻿// Copyright (c) .NET Core Community. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
+using Microsoft.Extensions.Logging;
 using System;
 using System.ComponentModel;
 using System.Data;
@@ -18,7 +19,6 @@ namespace DotNetCore.CAP.Oracle
             {
                 connection.Open();
             }
-
             using var command = connection.CreateCommand();
             command.CommandType = CommandType.Text;
             command.CommandText = sql;

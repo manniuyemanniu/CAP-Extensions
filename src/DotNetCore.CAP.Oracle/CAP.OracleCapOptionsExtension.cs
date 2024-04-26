@@ -21,15 +21,14 @@ namespace DotNetCore.CAP
 
         public void AddServices(IServiceCollection services)
         {
-            services.AddSingleton<CapStorageMarkerService>();
-            services.AddSingleton<IDataStorage, OracleDataStorage>();
+            services.AddSingleton(new CapStorageMarkerService("Oracle"));
+            services.Configure(_configure);
+            services.AddSingleton<IConfigureOptions<OracleOptions>, ConfigureOracleOptions>();
 
+            services.AddSingleton<IDataStorage, OracleDataStorage>();
             services.AddSingleton<IStorageInitializer, OracleStorageInitializer>();
             services.AddTransient<ICapTransaction, OracleCapTransaction>();
 
-            //Add MySqlOptions
-            services.Configure(_configure);
-            services.AddSingleton<IConfigureOptions<OracleOptions>, ConfigureOracleOptions>();
         }
     }
 }
