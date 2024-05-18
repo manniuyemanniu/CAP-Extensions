@@ -15,6 +15,7 @@ using System.Data;
 using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web;
 
 namespace DotNetCore.CAP.Oracle
 {
@@ -85,29 +86,21 @@ namespace DotNetCore.CAP.Oracle
 
         private async Task ChangeMessageStateAsync(string tableName, MediumMessage message, StatusName state)
         {
-            //var sql = $"UPDATE {tableName} SET \"Content\"=:Content,\"Retries\"=:Retries,\"ExpiresAt\"=:ExpiresAt,\"StatusName\"=:StatusName WHERE \"Id\"=:Id";
-
-            //object[] sqlParams =
-            //{
-            //    new OracleParameter(":Id", OracleDbType.Long, long.Parse(message.DbId), ParameterDirection.Input),
-            //    new OracleParameter(":Content",OracleDbType.Clob)
-            //    {
-            //        Value = _serializer.Serialize(message.Origin)
-            //    },
-            //    new OracleParameter(":Retries", message.Retries),
-            //    //new OracleParameter(":ExpiresAt",message.ExpiresAt.HasValue?(object)message.ExpiresAt:DBNull.Value),
-            //    new OracleParameter(":ExpiresAt", OracleDbType.Date, message.ExpiresAt, ParameterDirection.Input),
-            //    new OracleParameter(":StatusName", state.ToString("G")),
-            //};
-
-            //using var connection = new OracleConnection(_options.Value.ConnectionString);
-            //connection.ExecuteNonQuery(sql, sqlParams: sqlParams);
-            var sql = $"UPDATE {tableName} SET \"StatusName\"=:StatusName WHERE \"Id\"=:Id";
-
+            string statusName = state.ToString("G");
+            var sql = $"UPDATE {tableName} SET \"Content\"=:Content,\"Retries\"=:Retries,\"ExpiresAt\"=:ExpiresAt,\"StatusName\"=:StatusName WHERE \"Id\"=:Id";
+            
             object[] sqlParams =
             {
-                new OracleParameter(":Id", OracleDbType.Int64, (message.DbId), ParameterDirection.Input),
-                new OracleParameter(":StatusName", state.ToString("G"))
+                
+                new OracleParameter(":Content",OracleDbType.Clob)
+                {
+                    Value = _serializer.Serialize(message.Origin)
+                },
+                new OracleParameter(":Retries", message.Retries),
+                //new OracleParameter(":ExpiresAt",message.ExpiresAt.HasValue?(object)message.ExpiresAt:DBNull.Value),
+                new OracleParameter(":ExpiresAt", OracleDbType.Date, message.ExpiresAt, ParameterDirection.Input),
+                new OracleParameter(":StatusName", statusName),
+                new OracleParameter(":Id", long.Parse(message.DbId)),
             };
 
             using var connection = new OracleConnection(_options.Value.ConnectionString);
@@ -183,6 +176,8 @@ namespace DotNetCore.CAP.Oracle
                $" VALUES (:Id,'{_capOptions.Value.Version}',:Name,:Group1,:Content,:Retries,:Added,:ExpiresAt,:StatusName) ";
             using var connection = new OracleConnection(_options.Value.ConnectionString);
             connection.ExecuteNonQuery(sql, sqlParams: sqlParams);
+
+            await Task.CompletedTask;
         }
 
         #endregion
@@ -351,7 +346,7 @@ namespace DotNetCore.CAP.Oracle
                 var conn = dbTrans?.Connection!;
                 conn.ExecuteNonQuery(sql, dbTrans, sqlParams);
             }
-            return message;
+            return await Task.FromResult(message);
 
             #region 老的
             //    var sql =
