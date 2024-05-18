@@ -19,7 +19,7 @@ namespace Sample.Kafka.Oracle
 
     public class AppDbContext : DbContext
     {
-        public const string ConnectionString = "Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=192.168.0.5)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=ORCL)));User Id=KPACS;Password=123456";
+        public const string ConnectionString = "Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=192.168.1.20)(PORT=1525))(CONNECT_DATA=(SERVICE_NAME=ORCLCDB)));User Id=CAP;Password=cap123";
         public DbSet<Person> Persons { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

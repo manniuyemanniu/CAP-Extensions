@@ -26,11 +26,19 @@ namespace Sample.Kafka.Oracle
             {
                 x.UseEntityFramework<AppDbContext>(c =>
                 {
-                    c.Schema = "KPACS";
+                    //c.Schema = "KPACS";
+                    c.Schema = "CAP";
                 });
-                x.UseKafka(k =>
+                //x.UseKafka(k =>
+                //{
+                //    k.Servers = "192.168.0.38:9092,192.168.0.39:9092,192.168.0.87:9092";
+                //});
+                x.UseRabbitMQ(options =>
                 {
-                    k.Servers = "192.168.0.38:9092,192.168.0.39:9092,192.168.0.87:9092";
+                    //上一篇中我创建的用户名密码 
+                    options.HostName = "localhost";
+                    options.UserName = "admin";
+                    options.Password = "admin";
                 });
                 x.UseDashboard();
                 x.FailedRetryCount = 5;

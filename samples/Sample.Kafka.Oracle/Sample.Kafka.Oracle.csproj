@@ -5,14 +5,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="DotNetCore.CAP.Dashboard" Version="3.1.2" />
-    <PackageReference Include="DotNetCore.CAP.Kafka" Version="3.1.2" />
+    <PackageReference Include="DotNetCore.CAP.Dashboard" Version="7.0.3" />
+    <PackageReference Include="DotNetCore.CAP.Kafka" Version="7.0.3" />
     <PackageReference Include="Dapper" Version="2.0.78" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="3.1.9">
+    <PackageReference Include="DotNetCore.CAP.RabbitMQ" Version="7.0.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="7.0.3">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Oracle.EntityFrameworkCore" Version="3.19.80" />
+    <PackageReference Include="Oracle.EntityFrameworkCore" Version="7.21.11" />
   </ItemGroup>
 
   <ItemGroup>

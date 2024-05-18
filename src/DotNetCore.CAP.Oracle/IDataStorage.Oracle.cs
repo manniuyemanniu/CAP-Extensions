@@ -85,16 +85,29 @@ namespace DotNetCore.CAP.Oracle
 
         private async Task ChangeMessageStateAsync(string tableName, MediumMessage message, StatusName state)
         {
-            var sql = $"UPDATE {tableName} SET \"Content\"=:Content,\"Retries\"=:Retries,\"ExpiresAt\"=:ExpiresAt,\"StatusName\"=:StatusName WHERE \"Id\"=:Id";
+            //var sql = $"UPDATE {tableName} SET \"Content\"=:Content,\"Retries\"=:Retries,\"ExpiresAt\"=:ExpiresAt,\"StatusName\"=:StatusName WHERE \"Id\"=:Id";
+
+            //object[] sqlParams =
+            //{
+            //    new OracleParameter(":Id", OracleDbType.Long, long.Parse(message.DbId), ParameterDirection.Input),
+            //    new OracleParameter(":Content",OracleDbType.Clob)
+            //    {
+            //        Value = _serializer.Serialize(message.Origin)
+            //    },
+            //    new OracleParameter(":Retries", message.Retries),
+            //    //new OracleParameter(":ExpiresAt",message.ExpiresAt.HasValue?(object)message.ExpiresAt:DBNull.Value),
+            //    new OracleParameter(":ExpiresAt", OracleDbType.Date, message.ExpiresAt, ParameterDirection.Input),
+            //    new OracleParameter(":StatusName", state.ToString("G")),
+            //};
+
+            //using var connection = new OracleConnection(_options.Value.ConnectionString);
+            //connection.ExecuteNonQuery(sql, sqlParams: sqlParams);
+            var sql = $"UPDATE {tableName} SET \"StatusName\"=:StatusName WHERE \"Id\"=:Id";
 
             object[] sqlParams =
             {
-                new OracleParameter(":Id", long.Parse(message.DbId)),
-                new OracleParameter(":Content", _serializer.Serialize(message.Origin)),
-                new OracleParameter(":Retries", message.Retries),
-                //new OracleParameter(":ExpiresAt",message.ExpiresAt.HasValue?(object)message.ExpiresAt:DBNull.Value),
-                new OracleParameter(":ExpiresAt", message.ExpiresAt),
-                new OracleParameter(":StatusName", state.ToString("G")),
+                new OracleParameter(":Id", OracleDbType.Int64, (message.DbId), ParameterDirection.Input),
+                new OracleParameter(":StatusName", state.ToString("G"))
             };
 
             using var connection = new OracleConnection(_options.Value.ConnectionString);
@@ -200,7 +213,7 @@ namespace DotNetCore.CAP.Oracle
             //return await Task.FromResult(result);
 
             #region  老的
-            var fourMinAgo = DateTime.Now.AddMinutes(-4).ToString("O");
+            var fourMinAgo = DateTime.Now.AddMinutes(-4);
             var sql = $"SELECT \"Id\",\"Content\",\"Retries\",\"Added\" FROM {tableName} WHERE \"Retries\"<:Retries " +
                 $"AND \"Version\"=:Version AND \"Added\"<:Added AND (\"StatusName\"='{StatusName.Failed}' OR \"StatusName\"='{StatusName.Scheduled}') AND ROWNUM<= 200";
 
@@ -242,7 +255,7 @@ namespace DotNetCore.CAP.Oracle
             object[] sqlParams =
             {
                 new OracleParameter(":Retries", message.Retries),
-                new OracleParameter(":ExpiresAt",message.ExpiresAt.HasValue?(object)message.ExpiresAt:DBNull.Value),
+                new OracleParameter(":ExpiresAt", message.ExpiresAt.HasValue?(object)message.ExpiresAt:DBNull.Value),
                 new OracleParameter(":StatusName", state.ToString("G")),
                 new OracleParameter(":Id", long.Parse(message.DbId))
             };
