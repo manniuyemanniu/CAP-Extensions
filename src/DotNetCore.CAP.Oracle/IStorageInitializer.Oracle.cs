@@ -27,15 +27,12 @@ namespace DotNetCore.CAP.Oracle
         }
 
         public virtual string GetPublishedTableName()
-        {
-            _options.Value.Schema = ConfigureOracleOptions.ExtractUserId(_options.Value.ConnectionString);
-
+        {  
             return $@"""{_options.Value.Schema.ToUpper()}"".""{PUBLISHED_TABLE}""";
         }
 
         public virtual string GetReceivedTableName()
-        {
-            _options.Value.Schema = ConfigureOracleOptions.ExtractUserId(_options.Value.ConnectionString);
+        { 
             return $@"""{_options.Value.Schema.ToUpper()}"".""{RECEIVED_TABLE}""";
         }
 
