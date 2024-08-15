@@ -54,10 +54,10 @@ namespace DotNetCore.CAP
             if (string.IsNullOrEmpty(connectionString)) throw new ArgumentNullException(connectionString);
             options.ConnectionString = connectionString;
             //Kylin 20240815 新增 
-            if (!string.IsNullOrEmpty(options.ConnectionString))
+            if (!string.IsNullOrWhiteSpace(options.ConnectionString))
             {
                 string Schema = ExtractUserId(connectionString);
-                if (!string.IsNullOrEmpty(Schema))
+                if (!string.IsNullOrWhiteSpace(Schema))
                 {
                     options.Schema = Schema;
                 }
