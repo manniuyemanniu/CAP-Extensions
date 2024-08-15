@@ -22,13 +22,13 @@ namespace DotNetCore.CAP
         /// <summary>
         /// Creates an Npgsql connection from the configured data source.
         /// </summary>
-//        internal OracleConnection CreateConnection()
-//        {
-//#pragma warning disable CS0618 // Type or member is obsolete
-//            //return DataSource != null ? DataSource.CreateConnection() : new OracleConnection(ConnectionString);
-//            return new OracleConnection(ConnectionString);
-//#pragma warning restore CS0618 // Type or member is obsolete
-//        }
+        //        internal OracleConnection CreateConnection()
+        //        {
+        //#pragma warning disable CS0618 // Type or member is obsolete
+        //            //return DataSource != null ? DataSource.CreateConnection() : new OracleConnection(ConnectionString);
+        //            return new OracleConnection(ConnectionString);
+        //#pragma warning restore CS0618 // Type or member is obsolete
+        //        }
     }
 
     internal class ConfigureOracleOptions : IConfigureOptions<OracleOptions>
@@ -53,6 +53,34 @@ namespace DotNetCore.CAP
             var connectionString = dbContext.Database.GetConnectionString();
             if (string.IsNullOrEmpty(connectionString)) throw new ArgumentNullException(connectionString);
             options.ConnectionString = connectionString;
+            //Kylin 20240815 新增 
+            if (!string.IsNullOrEmpty(options.ConnectionString))
+            {
+                string Schema = ExtractUserId(connectionString);
+                if (!string.IsNullOrEmpty(Schema))
+                {
+                    options.Schema = Schema;
+                }
+            }
+        }
+        /// <summary>
+        /// 特定分割把Schema 进行替换位自身的User Id中的值  为空的时候就是默认的cap  否则就是User Id中用户
+        /// </summary>
+        /// <param name="connectionString"></param>
+        /// <returns></returns>
+        private static string ExtractUserId(string connectionString)
+        {
+            // 分割连接字符串
+            string[] parts = connectionString.Split(';');
+            // 查找包含 "User Id" 的部分
+            foreach (var part in parts)
+            {
+                if (part.StartsWith("User Id="))
+                {
+                    return part.Substring("User Id=".Length);
+                }
+            }
+            return null;
         }
     }
 }
