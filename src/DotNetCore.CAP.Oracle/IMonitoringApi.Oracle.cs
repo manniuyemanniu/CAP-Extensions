@@ -57,7 +57,8 @@ SELECT
 ) AS ""ReceivedFailed"",
 (
     SELECT COUNT(""Id"") FROM {_pubName} WHERE ""StatusName"" = N'Delayed'
-) AS ""PublishedDelayed"";";
+) AS ""PublishedDelayed""
+FROM DUAL";
 
             var connection = new OracleConnection(_options.ConnectionString);
             await using var _ = connection.ConfigureAwait(false);
@@ -85,59 +86,104 @@ SELECT
             var tableName = queryDto.MessageType == MessageType.Publish ? _pubName : _recName;
             var where = string.Empty;
 
-            if (!string.IsNullOrEmpty(queryDto.StatusName)) where += " and Lower(\"StatusName\") = Lower(:StatusName)";
+            var dic = new Dictionary<string, string>();
+            foreach (var value in Enum.GetValues(typeof(StatusName)))
+            {
+                // 获取当前枚举成员的名称
+                string name = value.ToString();
+                dic.Add(name.ToLower(), name);
+            }
 
-            if (!string.IsNullOrEmpty(queryDto.Name)) where += " and Lower(\"Name\") = Lower(:Name)";
+            #region [注释]
+            //if (!string.IsNullOrWhiteSpace(queryDto.StatusName))
+            //{
+            //    if (dic.Any(x => x.Key == queryDto.StatusName))
+            //    {
+            //        var newStatusName = dic.FirstOrDefault(x => x.Key == queryDto.StatusName).Value;
+            //        queryDto.StatusName = newStatusName;
+            //    }
+            //    where += " AND \"StatusName\" = :StatusName";
+            //}
+            //if (!string.IsNullOrWhiteSpace(queryDto.Name)) where += " AND \"Name\" = :Name";
 
-            if (!string.IsNullOrEmpty(queryDto.Group)) where += " and Lower(\"Group\") = Lower(:Group)";
+            //if (!string.IsNullOrWhiteSpace(queryDto.Group)) where += " AND \"Group\" = :Group";
 
-            if (!string.IsNullOrEmpty(queryDto.Content)) where += " and \"Content\" ILike :Content";
+            //if (!string.IsNullOrWhiteSpace(queryDto.Content)) where += " AND \"Content\" Like :Content";
 
-            var sqlQuery =
-                $"select * from {tableName} where 1=1 {where} order by \"Added\" desc offset :Offset limit :Limit";
+            //var sqlQuery = $"SELECT * FROM {tableName} WHERE 1=1 {where} ORDER BY \"Added\" DESC OFFSET :Offset ROWS FETCH NEXT :Limit ROWS ONLY";
+
+            //object[] sqlParams =
+            //{
+            //    new OracleParameter(":StatusName", queryDto.StatusName ?? string.Empty),
+            //    new OracleParameter(":Group", queryDto.Group ?? string.Empty),
+            //    new OracleParameter(":Name", queryDto.Name ?? string.Empty),
+            //    new OracleParameter(":Content", $"%{queryDto.Content}%"),
+            //    new OracleParameter(":Offset", queryDto.CurrentPage * queryDto.PageSize),
+            //    new OracleParameter(":Limit", queryDto.PageSize)
+            //};
+
+            //var connection = new OracleConnection(_options.ConnectionString);
+            //await using var _ = connection.ConfigureAwait(false);
+
+
+
+
+            //var count = await connection.ExecuteScalarAsync<int>($"select count(1) from {tableName} where 1=1 {where}",
+            //    new OracleParameter(":StatusName", queryDto.StatusName ?? string.Empty),
+            //    new OracleParameter(":Group", queryDto.Group ?? string.Empty),
+            //    new OracleParameter(":Name", queryDto.Name ?? string.Empty),
+            //    new OracleParameter(":Content", $"%{queryDto.Content}%")
+            //).ConfigureAwait(false);
+            #endregion
+
+
+            if (!string.IsNullOrWhiteSpace(queryDto.StatusName))
+            {
+                if (dic.Any(x => x.Key == queryDto.StatusName))
+                {
+                    var newStatusName = dic.FirstOrDefault(x => x.Key == queryDto.StatusName).Value;
+                    queryDto.StatusName = newStatusName;
+                }
+                where += $" AND \"StatusName\" = '{queryDto.StatusName ?? string.Empty}'";
+            }
+            if (!string.IsNullOrWhiteSpace(queryDto.Name)) where += $" AND \"Name\" = '{queryDto.StatusName ?? string.Empty}'";
+
+            if (!string.IsNullOrWhiteSpace(queryDto.Group)) where += $" AND \"Group\" = '{queryDto.StatusName ?? string.Empty}'";
+
+            if (!string.IsNullOrWhiteSpace(queryDto.Content)) where += $" AND \"Content\" LIKE '%{queryDto.Content ?? string.Empty}%'";
 
             var connection = new OracleConnection(_options.ConnectionString);
             await using var _ = connection.ConfigureAwait(false);
+            var count = await connection.ExecuteScalarAsync<int>($"select count(1) from {tableName} where 1=1 {where}").ConfigureAwait(false);
+            var sqlQuery = $"SELECT * FROM {tableName} WHERE 1=1 {where} ORDER BY \"Added\" DESC OFFSET {queryDto.CurrentPage * queryDto.PageSize} ROWS FETCH NEXT {queryDto.PageSize} ROWS ONLY";
 
-            var count = await connection.ExecuteScalarAsync<int>($"select count(1) from {tableName} where 1=1 {where}",
-                new OracleParameter(":StatusName", queryDto.StatusName ?? string.Empty),
-                new OracleParameter(":Group", queryDto.Group ?? string.Empty),
-                new OracleParameter(":Name", queryDto.Name ?? string.Empty),
-                new OracleParameter(":Content", $"%{queryDto.Content}%")).ConfigureAwait(false);
 
-            object[] sqlParams =
-            {
-            new OracleParameter(":StatusName", queryDto.StatusName ?? string.Empty),
-            new OracleParameter(":Group", queryDto.Group ?? string.Empty),
-            new OracleParameter(":Name", queryDto.Name ?? string.Empty),
-            new OracleParameter(":Content", $"%{queryDto.Content}%"),
-            new OracleParameter(":Offset", queryDto.CurrentPage * queryDto.PageSize),
-            new OracleParameter(":Limit", queryDto.PageSize)
-        };
 
-            var items = await connection.ExecuteReaderAsync(sqlQuery, async reader =>
-            {
-                var messages = new List<MessageDto>();
-
-                while (await reader.ReadAsync().ConfigureAwait(false))
+            var items = await connection.ExecuteReaderAsync(sqlQuery,
+                async reader =>
                 {
-                    var index = 0;
-                    messages.Add(new MessageDto
-                    {
-                        Id = reader.GetInt64(index++).ToString(),
-                        Version = reader.GetString(index++),
-                        Name = reader.GetString(index++),
-                        Group = queryDto.MessageType == MessageType.Subscribe ? reader.GetString(index++) : default,
-                        Content = reader.GetString(index++),
-                        Retries = reader.GetInt32(index++),
-                        Added = reader.GetDateTime(index++),
-                        ExpiresAt = reader.IsDBNull(index++) ? null : reader.GetDateTime(index - 1),
-                        StatusName = reader.GetString(index)
-                    });
-                }
+                    var messages = new List<MessageDto>();
 
-                return messages;
-            }, sqlParams: sqlParams).ConfigureAwait(false);
+                    while (await reader.ReadAsync().ConfigureAwait(false))
+                    {
+                        var index = 0;
+                        messages.Add(new MessageDto
+                        {
+                            Id = reader.GetInt64(index++).ToString(),
+                            Version = reader.GetString(index++),
+                            Name = reader.GetString(index++),
+                            Group = queryDto.MessageType == MessageType.Subscribe ? reader.GetString(index++) : default,
+                            Content = reader.GetString(index++),
+                            Retries = reader.GetInt32(index++),
+                            Added = reader.GetDateTime(index++),
+                            ExpiresAt = reader.IsDBNull(index++) ? null : reader.GetDateTime(index - 1),
+                            StatusName = reader.GetString(index)
+                        });
+                    }
+                    return messages;
+                }
+            //,sqlParams: sqlParams).ConfigureAwait(false);
+            ).ConfigureAwait(false);
 
             return new PagedQueryResult<MessageDto>
             { Items = items, PageIndex = queryDto.CurrentPage, PageSize = queryDto.PageSize, Totals = count };
@@ -177,7 +223,26 @@ SELECT
 
         private async ValueTask<int> GetNumberOfMessage(string tableName, string statusName)
         {
-            var sqlQuery = $"SELECT COUNT(\"Id\") FROM {tableName} WHERE LOWER(\"StatusName\") = LOWER(:state)";
+
+            var dic = new Dictionary<string, string>();
+            foreach (var value in Enum.GetValues(typeof(StatusName)))
+            {
+                // 获取当前枚举成员的名称
+                string name = value.ToString();
+                dic.Add(name.ToLower(), name);
+            }
+
+
+            if (!string.IsNullOrWhiteSpace(statusName))
+            {
+                if (dic.Any(x => x.Key == statusName))
+                {
+                    var newStatusName = dic.FirstOrDefault(x => x.Key == statusName).Value;
+                    statusName = newStatusName;
+                }
+            }
+
+            var sqlQuery = $"SELECT COUNT(\"Id\") FROM {tableName} WHERE \"StatusName\" = :state";
 
             var connection = new OracleConnection(_options.ConnectionString);
             await using var _ = connection.ConfigureAwait(false);
@@ -208,20 +273,20 @@ SELECT
             var sqlQuery =
                 $@"
 with aggr as (
-    select to_char(""Added"",'yyyy-MM-dd-HH') as ""Key"",
+    select to_char(""Added"",'yyyy-mm-dd-hh24') as ""Key"",
     count(""Id"") as ""Count""
     from {tableName}
         where ""StatusName"" = :statusName
-    group by to_char(""Added"", 'yyyy-MM-dd-HH')
+    group by to_char(""Added"", 'yyyy-mm-dd-hh24')
 )
-select ""Key"",""Count"" from aggr where ""Key"" >= :minKey and ""Key"" <= :maxKey;";
+select ""Key"",""Count"" from aggr where ""Key"" >= :minKey and ""Key"" <= :maxKey";
 
             object[] sqlParams =
             {
-            new OracleParameter(":statusName", statusName),
-            new OracleParameter(":minKey", keyMaps.Keys.Min()),
-            new OracleParameter(":maxKey", keyMaps.Keys.Max())
-        };
+                new OracleParameter(":statusName", statusName),
+                new OracleParameter(":minKey", keyMaps.Keys.Min()),
+                new OracleParameter(":maxKey", keyMaps.Keys.Max())
+            };
 
             Dictionary<string, int> valuesMap;
             var connection = new OracleConnection(_options.ConnectionString);
@@ -286,4 +351,5 @@ select ""Key"",""Count"" from aggr where ""Key"" >= :minKey and ""Key"" <= :maxK
             return mediumMessage;
         }
     }
+
 }
