@@ -1,7 +1,6 @@
 ﻿// Copyright (c) .NET Core Community. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
-using Microsoft.Extensions.Logging;
 using System;
 using System.ComponentModel;
 using System.Data;
@@ -38,7 +37,7 @@ namespace DotNetCore.CAP.Oracle
         public static async Task<int> ExecuteNonQueryAsync(this DbConnection connection, string sql, DbTransaction transaction = null,
             params object[] sqlParams)
         {
-            
+
 
             if (connection.State == ConnectionState.Closed) await connection.OpenAsync().ConfigureAwait(false);
 
@@ -82,7 +81,7 @@ namespace DotNetCore.CAP.Oracle
             return result;
         }
         public static async Task<T> ExecuteReaderAsync<T>(this DbConnection connection, string sql,
-        Func<DbDataReader, Task<T>>? readerFunc, DbTransaction? transaction = null, params object[] sqlParams)
+            Func<DbDataReader, Task<T>>? readerFunc, DbTransaction? transaction = null, params object[] sqlParams)
         {
             if (connection.State == ConnectionState.Closed) await connection.OpenAsync().ConfigureAwait(false);
 
