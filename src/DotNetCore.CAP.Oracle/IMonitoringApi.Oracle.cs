@@ -146,9 +146,9 @@ FROM DUAL";
                 }
                 where += $" AND \"StatusName\" = '{queryDto.StatusName ?? string.Empty}'";
             }
-            if (!string.IsNullOrWhiteSpace(queryDto.Name)) where += $" AND \"Name\" = '{queryDto.StatusName ?? string.Empty}'";
+            if (!string.IsNullOrWhiteSpace(queryDto.Name)) where += $" AND \"Name\" = '{queryDto.Name ?? string.Empty}'";
 
-            if (!string.IsNullOrWhiteSpace(queryDto.Group)) where += $" AND \"Group\" = '{queryDto.StatusName ?? string.Empty}'";
+            if (!string.IsNullOrWhiteSpace(queryDto.Group)) where += $" AND \"Group\" = '{queryDto.Group ?? string.Empty}'";
 
             if (!string.IsNullOrWhiteSpace(queryDto.Content)) where += $" AND \"Content\" LIKE '%{queryDto.Content ?? string.Empty}%'";
 
