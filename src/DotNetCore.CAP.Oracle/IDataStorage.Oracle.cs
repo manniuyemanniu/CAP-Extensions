@@ -13,9 +13,9 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web;
 
 namespace DotNetCore.CAP.Oracle
 {
@@ -29,6 +29,8 @@ namespace DotNetCore.CAP.Oracle
         private readonly string _pubName;
         private readonly string _recName;
 
+        private const string RECEIVED_LOG_TABLE = "RECEIVED_LOG";
+        private const string PUBLISHED_LOG_TABLE = "PUBLISHED_LOG";
         public OracleDataStorage(
             IOptions<OracleOptions> options,
             IOptions<CapOptions> capOptions,
@@ -49,21 +51,80 @@ namespace DotNetCore.CAP.Oracle
             await ChangeMessageStateAsync(_recName, message, state);
         }
 
+        /// <summary>
+        /// 发布记录表历史记录表
+        /// </summary>
+        /// <returns></returns>
+        public virtual string GetPublishedLogTableName()
+        {
+            return $@"""{_options.Value.Schema.ToUpper()}"".""{PUBLISHED_LOG_TABLE}""";
+        }
+        /// <summary>
+        /// 消费失败历史记录表
+        /// </summary>
+        /// <returns></returns>
+        public virtual string GetReceivedLogTableName()
+        {
+            return $@"""{_options.Value.Schema.ToUpper()}"".""{RECEIVED_LOG_TABLE}""";
+        }
 
         public async Task<int> DeleteExpiresAsync(string table, DateTime timeout, int batchCount = 1000,
             CancellationToken token = default)
         {
             var connection = new OracleConnection(_options.Value.ConnectionString);
             await using var _ = connection;
+            var tab_log = string.Empty;
+            if (table == _pubName)
+            {
+                tab_log = GetPublishedLogTableName();
+            }
+            else if (table == _recName)
+            {
+                tab_log = GetReceivedLogTableName();
+            }
 
+            if (!string.IsNullOrWhiteSpace(tab_log))
+            {
+                var insert_str_build = new StringBuilder();
+                insert_str_build.Append($"INSERT INTO {tab_log}");
+                insert_str_build.Append(Environment.NewLine);
+                if (tab_log == GetPublishedLogTableName())
+                {
+                    insert_str_build.Append("(\"Id\", \"Version\", \"Name\", \"Content\", \"Retries\", \"Added\", \"ExpiresAt\", \"StatusName\")");
+                }
+                else
+                {
+                    insert_str_build.Append("(\"Id\", \"Version\", \"Name\", \"Group\", \"Content\", \"Retries\", \"Added\", \"ExpiresAt\", \"StatusName\")");
+                }
+                insert_str_build.Append(Environment.NewLine);
+                insert_str_build.Append("SELECT");
+                insert_str_build.Append(Environment.NewLine);
+                if (tab_log == GetPublishedLogTableName())
+                {
+                    insert_str_build.Append(" a.\"Id\",a.\"Version\",a.\"Name\",a.\"Content\",a.\"Retries\",a.\"Added\",a.\"ExpiresAt\",a.\"StatusName\"");
+                }
+                else
+                {
+                    insert_str_build.Append(" a.\"Id\",a.\"Version\",a.\"Name\",a.\"Group\",a.\"Content\",a.\"Retries\",a.\"Added\",a.\"ExpiresAt\",a.\"StatusName\"");
+                }
+                insert_str_build.Append(Environment.NewLine);
+                insert_str_build.Append($"FROM {table} A");
+                insert_str_build.Append(Environment.NewLine);
+                insert_str_build.Append($"LEFT JOIN {tab_log} B ON a.\"Id\" = b.\"Id\"");
+                insert_str_build.Append(Environment.NewLine);
+                insert_str_build.Append($"where NVL2(b.\"Id\",1,0)= 0 AND a.\"ExpiresAt\" < :timeout ");
+                insert_str_build.Append(Environment.NewLine);
+                var insert_sql_str = insert_str_build.ToString();
 
+                var insert_count = await connection.ExecuteNonQueryAsync(insert_sql_str, null, new OracleParameter(":timeout", timeout));
+            }
 
             //var sql = $"DELETE FROM {table} WHERE \"ExpiresAt\" < :timeout AND \"Id\" IN (SELECT \"Id\" FROM {table} WHERE ROWNUM<= :batchCount)";
 
             var sql = $"DELETE FROM {table} WHERE \"Id\" IN (SELECT \"Id\" FROM {table} WHERE \"ExpiresAt\" < :timeout AND (\"StatusName\"='{StatusName.Succeeded}' OR \"StatusName\"='{StatusName.Failed}')) AND ROWNUM<= :batchCount";
 
             var count = await connection.ExecuteNonQueryAsync(
-               sql, null,
+                sql, null,
                 new OracleParameter(":timeout", timeout),
                 new OracleParameter(":batchCount", batchCount));
             return await Task.FromResult(count);
@@ -88,10 +149,10 @@ namespace DotNetCore.CAP.Oracle
         {
             string statusName = state.ToString("G");
             var sql = $"UPDATE {tableName} SET \"Content\"=:Content,\"Retries\"=:Retries,\"ExpiresAt\"=:ExpiresAt,\"StatusName\"=:StatusName WHERE \"Id\"=:Id";
-            
+
             object[] sqlParams =
             {
-                
+
                 new OracleParameter(":Content",OracleDbType.Clob)
                 {
                     Value = _serializer.Serialize(message.Origin)
