@@ -193,6 +193,10 @@ namespace DotNetCore.CAP.Oracle
 
         public async Task<MediumMessage> StoreReceivedMessageAsync(string name, string group, Message content)
         {
+            //获取消息名称描述
+            string namedescription = string.Empty;
+            content.Headers.TryGetValue("cap-msg-namedescription", out namedescription);
+
             var mdMessage = new MediumMessage
             {
                 DbId = SnowflakeId.Default().NextId().ToString(),
@@ -361,8 +365,17 @@ namespace DotNetCore.CAP.Oracle
             await ChangeMessageStateAsync(_pubName, message, state, transaction);
         }
 
+        /// <summary>
+        /// 发布消息到数据库
+        /// </summary>
+        /// <param name="name"></param>
+        /// <param name="content"></param>
+        /// <param name="transaction"></param>
+        /// <returns></returns>
         public async Task<MediumMessage> StoreMessageAsync(string name, Message content, object transaction = null)
         {
+            string namedescription = string.Empty;
+            content.Headers.TryGetValue("cap-msg-namedescription", out namedescription);
 
             var sql = $"INSERT INTO {_pubName} (\"Id\",\"Version\",\"Name\",\"Content\",\"Retries\",\"Added\",\"ExpiresAt\",\"StatusName\")" +
                 $"VALUES(:Id,'{_options.Value.Version}',:Name,:Content,:Retries,:Added,:ExpiresAt,:StatusName)";
